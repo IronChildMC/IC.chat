@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>IC.chat</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="sidebar">
+  <div id="contacts-section">
+    <div class="section-title">Contactos</div>
+    <div id="contacts"></div>
+    <button onclick="addContactPrompt()">Añadir Contacto</button>
+  </div>
+  <div id="groups-section">
+    <div class="section-title">Grupos</div>
+    <div id="groups"></div>
+    <button onclick="createGroupPrompt()">Crear Grupo</button>
+  </div>
+</div>
+
+<div id="chat-area">
+  <div id="messages"></div>
+  <div id="input">
+    <input id="message" placeholder="Escribe algo..." />
+    <button onclick="sendMessage()">Enviar</button>
+  </div>
+</div>
+
+<script src="https://cdn.ably.io/lib/ably.min-1.js"></script>
+<script src="utils.js"></script>
+<script src="chat.js"></script>
+
+</body>
+</html>
