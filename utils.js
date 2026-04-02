@@ -1,14 +1,12 @@
-// XOR simple para pruebas
-function xorEncrypt(text,key){
-  let out='';
-  for(let i=0;i<text.length;i++){
-    out+=String.fromCharCode(text.charCodeAt(i)^key.charCodeAt(i%key.length));
-  }
-  return out;
+// AES Encrypt/Decrypt
+function encryptAES(text,key){
+    return CryptoJS.AES.encrypt(text,key).toString();
 }
-function xorDecrypt(text,key){return xorEncrypt(text,key);}
+function decryptAES(ciphertext,key){
+    return CryptoJS.AES.decrypt(ciphertext,key).toString(CryptoJS.enc.Utf8);
+}
 
-// Genera número aleatorio de 5 dígitos único
+// Número aleatorio 5 dígitos único
 function generateRandom5Digit(existingNumbers){
   let num;
   do { num = Math.floor(10000 + Math.random()*90000).toString(); } while(existingNumbers.includes(num));
