@@ -1,147 +1,82 @@
-const API_KEY = 'Kp5c1A.nrnbpg:JYLdRzLwYvu4w5kXCGg3gozQTW5D0ViLa6aG0KP0nKc';
-const ably = new Ably.Realtime(API_KEY);
-
-const messagesDiv = document.getElementById('messages');
-const contactsDiv = document.getElementById('contacts');
-const groupsDiv = document.getElementById('groups');
-
-// Datos locales
-let contacts = JSON.parse(localStorage.getItem('icchat_contacts')||'{}');
-let groups = JSON.parse(localStorage.getItem('icchat_groups')||'{}');
-let groupKeys = JSON.parse(localStorage.getItem('icchat_groupKeys')||'{}');
-let currentChannel = ably.channels.get('chat-publico');
+// ------------------ CONFIG ------------------
+const myNum = '12345'; // tu número
+const PREMIUM_LIST_URL = 'premium.txt'; 
+let premiumList = [];
+let contacts = {}; 
 let currentGroup = null;
 
-// Presencia online
-currentChannel.presence.enter({username:'Tú'});
-currentChannel.presence.subscribe('enter',()=>updateContacts());
-currentChannel.presence.subscribe('leave',()=>updateContacts());
-updateContacts();
-updateGroups();
-
-// ------------------ Mensajes ------------------
-
-function displayMessage(msg){
-    const div = document.createElement('div');
-    if(msg.includes('giphy.com')){
-        div.innerHTML = `<img class="gif-message" src="${msg}">`;
-    } else {
-        div.textContent = msg;
-    }
-    messagesDiv.appendChild(div);
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+// ------------------ PREMIUM ------------------
+async function loadPremiumList() {
+    try {
+        const res = await fetch(PREMIUM_LIST_URL);
+        const text = await res.text();
+        premiumList = text.split('\n').map(x=>x.trim()).filter(x=>x);
+        updatePremiumUI();
+    } catch(e){ console.warn('No se pudo cargar premium.txt'); }
 }
 
+function isPremium(num){ return premiumList.includes(num); }
+
+function activatePremiumUI(){
+    const accept = confirm(`Subir a premium cuesta 3€ (y parte de los almuerzos gratis).\nVentajas:\n- GIFs de Giphy\n- Nombre animado arcoíris\n- Mensajes emergentes\n- Acceso a juego Sky Platform\n¿Deseas activar premium?`);
+    if(accept){
+        alert('¡Ahora eres usuario Premium!');
+        if(!premiumList.includes(myNum)) premiumList.push(myNum);
+        updatePremiumUI();
+    }
+}
+
+function updatePremiumUI(){
+    document.querySelectorAll('.contact').forEach(div=>{
+        const num = div.dataset.num;
+        if(isPremium(num)){
+            div.style.background = 'linear-gradient(to right, red, orange, yellow, green, blue, indigo, violet)';
+            div.style.webkitBackgroundClip = 'text';
+            div.style.color = 'transparent';
+            div.style.fontWeight = 'bold';
+            div.style.animation = 'rainbow 3s infinite linear';
+        }
+    });
+}
+
+// ------------------ ANIMACIÓN ARCOIRIS ------------------
+const style = document.createElement('style');
+style.textContent = `
+@keyframes rainbow {0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+.contact{background-size: 400% 400%;}
+`;
+document.head.appendChild(style);
+
+// ------------------ BOTONES PREMIUM Y JUEGO ------------------
+const premiumBtn = document.createElement('button');
+premiumBtn.textContent = '✨ Subir a Premium ✨';
+premiumBtn.onclick = activatePremiumUI;
+document.body.insertBefore(premiumBtn, document.getElementById('contacts'));
+
+const gameBtn = document.createElement('button');
+gameBtn.textContent = '🎮 Jugar Sky Platform';
+gameBtn.onclick = ()=>{
+    if(!isPremium(myNum)){ alert('Solo usuarios Premium'); return; }
+    window.open('sky-platform.html','SkyPlatform','width=800,height=600');
+};
+document.body.insertBefore(gameBtn, document.getElementById('contacts'));
+
+// ------------------ CHAT ------------------
+const messagesDiv = document.getElementById('messages');
+document.getElementById('sendBtn').onclick = sendMessage;
 function sendMessage(){
     const input = document.getElementById('message');
     if(!input.value.trim()) return;
     let msg = input.value.trim();
-    if(currentGroup && groupKeys[currentGroup]){
-        msg = encryptAES(msg, groupKeys[currentGroup]);
+    if(msg.includes('mensaje_qaz') && isPremium(myNum)){
+        if(Notification.permission==='granted'){ new Notification(`Mensaje de ${myNum}`, {body: msg.replace('mensaje_qaz','')}); }
+        else { Notification.requestPermission(); }
     }
-    currentChannel.publish('mensaje', msg);
-    saveMessageToSharedStorage(msg);
-    input.value = '';
+    messagesDiv.innerHTML += `<div class="msg"><b>Tú:</b> ${msg}</div>`;
+    input.value='';
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
 }
 
-// ------------------ Shared Storage ------------------
-
-function saveMessageToSharedStorage(msg){
-    currentChannel.storage.get('historial', (err,res)=>{
-        let hist = res || '';
-        hist += msg + '\n';
-        currentChannel.storage.set('historial', hist);
-    });
-}
-
-function loadGroupHistory(){
-    currentChannel.storage.get('historial',(err,res)=>{
-        if(res){
-            const lines = res.split('\n');
-            lines.forEach(msg=>{
-                if(msg.trim()!==''){
-                    let content = currentGroup && groupKeys[currentGroup]? decryptAES(msg, groupKeys[currentGroup]):msg;
-                    displayMessage(content);
-                }
-            });
-        }
-    });
-}
-
-// ------------------ Contactos ------------------
-
-function updateContacts(){
-    currentChannel.presence.get((err,members)=>{
-        let html='';
-        for(let id in contacts){
-            let online = members.some(m=>m.data.username === contacts[id].name)? 'online':'';
-            html += `<div class="contact ${online}">${contacts[id].name} (${id}) ${online}</div>`;
-        }
-        contactsDiv.innerHTML = html;
-    });
-}
-
-function addContactPrompt(){
-    let num = prompt('Introduce número de 5 dígitos del contacto:');
-    if(num && !contacts[num]){
-        let name = prompt('Ponle un nombre (opcional):')||num;
-        contacts[num] = {name};
-        localStorage.setItem('icchat_contacts', JSON.stringify(contacts));
-        updateContacts();
-    } else alert('Número inválido o ya existe');
-}
-
-// ------------------ Grupos ------------------
-
-function updateGroups(){
-    let html='';
-    for(let g in groups){
-        html += `<div class="group" onclick="joinGroup('${g}')">${g}</div>`;
-    }
-    groupsDiv.innerHTML = html;
-}
-
-function createGroupPrompt(){
-    let groupName = prompt('Nombre del grupo:');
-    if(groupName){
-        let code = Math.random().toString(36).substring(2,10);
-        groups[groupName] = [];
-        groupKeys[groupName] = code;
-        localStorage.setItem('icchat_groups', JSON.stringify(groups));
-        localStorage.setItem('icchat_groupKeys', JSON.stringify(groupKeys));
-        updateGroups();
-    }
-}
-
-function joinGroup(g){
-    currentGroup = g;
-    currentChannel = ably.channels.get(g);
-    messagesDiv.innerHTML='';
-    loadGroupHistory();
-
-    currentChannel.subscribe(msg=>{
-        let content = msg.data;
-        if(currentGroup && groupKeys[currentGroup]) content = decryptAES(content, groupKeys[currentGroup]);
-        displayMessage(content);
-    });
-
-    alert(`Entraste al grupo ${g}`);
-}
-
-// ------------------ AES Encrypt/Decrypt ------------------
-
-function encryptAES(text,key){
-    return CryptoJS.AES.encrypt(text,key).toString();
-}
-
-function decryptAES(ciphertext,key){
-    return CryptoJS.AES.decrypt(ciphertext,key).toString(CryptoJS.enc.Utf8);
-}
-
-// ------------------ Recibir mensajes en canal principal ------------------
-
-currentChannel.subscribe(msg=>{
-    let content = msg.data;
-    if(currentGroup && groupKeys[currentGroup]) content = decryptAES(content, groupKeys[currentGroup]);
-    displayMessage(content);
-});
+// ------------------ INICIALIZACIÓN ------------------
+loadPremiumList();
+updatePremiumUI();
